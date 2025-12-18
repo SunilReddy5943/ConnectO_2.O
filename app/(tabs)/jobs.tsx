@@ -13,6 +13,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS, SHADOWS, CATEGORIES } from '../constants/theme';
 import { useAuth } from '../context/AuthContext';
+import FloatingAIButton from '../components/FloatingAIButton';
 
 interface Job {
   id: string;
@@ -587,6 +588,9 @@ export default function JobsScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />
         }
       />
+
+      {/* AI Assistant FAB */}
+      <FloatingAIButton />
     </SafeAreaView>
   );
 }

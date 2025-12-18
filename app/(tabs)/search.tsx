@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -15,80 +15,196 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS, SHADOWS, CATEGORIES, INDIAN_CITIES } from '../constants/theme';
 import SearchBar from '../components/SearchBar';
 import WorkerCard from '../components/WorkerCard';
+import JobCard from '../components/JobCard';
 import CategoryCard from '../components/CategoryCard';
+import FloatingAIButton from '../components/FloatingAIButton';
 import { searchWorkers, DUMMY_WORKERS, DummyWorker } from '../data/dummyWorkers';
+import { searchJobs, DUMMY_JOBS, DummyJob, JobStatus } from '../data/dummyJobs';
 import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 
 export default function SearchScreen() {
   const params = useLocalSearchParams<{ category?: string; voiceMode?: string }>();
   const { addRecentSearch, recentSearches } = useApp();
+  const { activeRole } = useAuth();
+  const isWorkerMode = activeRole === 'WORKER';
   
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<DummyWorker[]>([]);
+  const [workerResults, setWorkerResults] = useState<DummyWorker[]>([]);
+  const [jobResults, setJobResults] = useState<DummyJob[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [showVoiceModal, setShowVoiceModal] = useState(params.voiceMode === 'true');
   const [voiceText, setVoiceText] = useState('');
   const [isListening, setIsListening] = useState(false);
   const [aiProcessing, setAiProcessing] = useState(false);
+  const debounceTimer = useRef<NodeJS.Timeout | null>(null);
   
-  // Filters
+  // Worker Search Filters (Customer Mode)
   const [selectedCategory, setSelectedCategory] = useState(params.category || '');
   const [selectedCity, setSelectedCity] = useState('');
   const [minExperience, setMinExperience] = useState(0);
-  const [maxWage, setMaxWage] = useState(2000);
+  const [minPrice, setMinPrice] = useState(0);
+  const [maxPrice, setMaxPrice] = useState(2000);
   const [minRating, setMinRating] = useState(0);
   const [verifiedOnly, setVerifiedOnly] = useState(false);
-  const [sortBy, setSortBy] = useState<'rating' | 'experience' | 'wage_low' | 'wage_high'>('rating');
+  const [availableOnly, setAvailableOnly] = useState(false);
+  
+  // Job Search Filters (Worker Mode)
+  const [jobCategory, setJobCategory] = useState('');
+  const [jobStatus, setJobStatus] = useState<JobStatus | ''>('NEW');
+  const [minBudget, setMinBudget] = useState(0);
+  const [maxBudget, setMaxBudget] = useState(5000);
+  const [maxDistance, setMaxDistance] = useState(50);
+  const [postedWithinDays, setPostedWithinDays] = useState(0);
+  const [urgentOnly, setUrgentOnly] = useState(false);
+  
+  // Sorting
+  const [workerSortBy, setWorkerSortBy] = useState<'best_match' | 'rating' | 'experience' | 'price_low' | 'price_high' | 'nearest'>('best_match');
+  const [jobSortBy, setJobSortBy] = useState<'newest' | 'highest_pay' | 'nearest' | 'urgent'>('newest');
 
   useEffect(() => {
     if (params.category) {
+      if (isWorkerMode) {
+        setJobCategory(params.category);
+      } else {
+        setSelectedCategory(params.category);
+      }
       handleSearch(params.category);
     } else {
-      setResults(DUMMY_WORKERS.slice(0, 20));
+      // Load initial results
+      if (isWorkerMode) {
+        setJobResults(DUMMY_JOBS.filter(j => j.status === 'NEW').slice(0, 20));
+      } else {
+        setWorkerResults(DUMMY_WORKERS.slice(0, 20));
+      }
     }
-  }, [params.category]);
+  }, [params.category, isWorkerMode]);
+
+  // Debounced search on query change
+  useEffect(() => {
+    if (debounceTimer.current) {
+      clearTimeout(debounceTimer.current);
+    }
+
+    if (query.trim()) {
+      debounceTimer.current = setTimeout(() => {
+        handleSearch();
+      }, 300); // 300ms debounce
+    }
+
+    return () => {
+      if (debounceTimer.current) {
+        clearTimeout(debounceTimer.current);
+      }
+    };
+  }, [query]);
 
   const handleSearch = useCallback((searchQuery?: string) => {
     const q = searchQuery || query;
     setIsLoading(true);
     
     setTimeout(() => {
-      const filtered = searchWorkers(q, {
-        category: selectedCategory,
-        city: selectedCity,
-        minExperience,
-        maxWage,
-        minRating,
-        verifiedOnly,
-      });
+      if (isWorkerMode) {
+        // Worker Mode: Search Jobs
+        const filtered = searchJobs(q, {
+          category: jobCategory,
+          minBudget: minBudget > 0 ? minBudget : undefined,
+          maxBudget: maxBudget < 5000 ? maxBudget : undefined,
+          maxDistance: maxDistance < 50 ? maxDistance : undefined,
+          status: jobStatus as JobStatus | undefined,
+          postedWithinDays: postedWithinDays > 0 ? postedWithinDays : undefined,
+          urgentOnly,
+        });
 
-      // Sort results
-      let sorted = [...filtered];
-      switch (sortBy) {
-        case 'rating':
-          sorted.sort((a, b) => b.rating_average - a.rating_average);
-          break;
-        case 'experience':
-          sorted.sort((a, b) => b.years_of_experience - a.years_of_experience);
-          break;
-        case 'wage_low':
-          sorted.sort((a, b) => a.daily_wage_min - b.daily_wage_min);
-          break;
-        case 'wage_high':
-          sorted.sort((a, b) => b.daily_wage_max - a.daily_wage_max);
-          break;
+        // Sort jobs
+        let sorted = [...filtered];
+        switch (jobSortBy) {
+          case 'newest':
+            sorted.sort((a, b) => b.posted_at.getTime() - a.posted_at.getTime());
+            break;
+          case 'highest_pay':
+            sorted.sort((a, b) => b.budget_max - a.budget_max);
+            break;
+          case 'nearest':
+            sorted.sort((a, b) => a.distance_km - b.distance_km);
+            break;
+          case 'urgent':
+            sorted.sort((a, b) => {
+              if (a.urgency === 'HIGH' && b.urgency !== 'HIGH') return -1;
+              if (a.urgency !== 'HIGH' && b.urgency === 'HIGH') return 1;
+              return b.posted_at.getTime() - a.posted_at.getTime();
+            });
+            break;
+        }
+
+        setJobResults(sorted);
+      } else {
+        // Customer Mode: Search Workers
+        const filtered = searchWorkers(q, {
+          category: selectedCategory,
+          city: selectedCity,
+          minExperience,
+          maxWage: maxPrice,
+          minRating,
+          verifiedOnly,
+        });
+
+        // Sort workers
+        let sorted = [...filtered];
+        switch (workerSortBy) {
+          case 'best_match':
+            // Keep default relevance order from search
+            break;
+          case 'rating':
+            sorted.sort((a, b) => b.rating_average - a.rating_average);
+            break;
+          case 'experience':
+            sorted.sort((a, b) => b.years_of_experience - a.years_of_experience);
+            break;
+          case 'price_low':
+            sorted.sort((a, b) => a.daily_wage_min - b.daily_wage_min);
+            break;
+          case 'price_high':
+            sorted.sort((a, b) => b.daily_wage_max - a.daily_wage_max);
+            break;
+          case 'nearest':
+            // Would need actual distance calculation
+            sorted.sort((a, b) => a.name.localeCompare(b.name));
+            break;
+        }
+
+        setWorkerResults(sorted);
       }
-
-      setResults(sorted);
+      
       setIsLoading(false);
       
       if (q.trim()) {
         addRecentSearch(q.trim());
       }
-    }, 300);
-  }, [query, selectedCategory, selectedCity, minExperience, maxWage, minRating, verifiedOnly, sortBy]);
+    }, 100); // Reduced delay for better responsiveness
+  }, [
+    query,
+    isWorkerMode,
+    // Worker filters
+    selectedCategory,
+    selectedCity,
+    minExperience,
+    maxPrice,
+    minRating,
+    verifiedOnly,
+    workerSortBy,
+    // Job filters
+    jobCategory,
+    minBudget,
+    maxBudget,
+    maxDistance,
+    jobStatus,
+    postedWithinDays,
+    urgentOnly,
+    jobSortBy,
+  ]);
 
   const handleVoiceSearch = async () => {
     if (!voiceText.trim()) return;
@@ -140,23 +256,50 @@ export default function SearchScreen() {
   };
 
   const clearFilters = () => {
-    setSelectedCategory('');
-    setSelectedCity('');
-    setMinExperience(0);
-    setMaxWage(2000);
-    setMinRating(0);
-    setVerifiedOnly(false);
-    setSortBy('rating');
+    if (isWorkerMode) {
+      // Clear job filters
+      setJobCategory('');
+      setJobStatus('NEW');
+      setMinBudget(0);
+      setMaxBudget(5000);
+      setMaxDistance(50);
+      setPostedWithinDays(0);
+      setUrgentOnly(false);
+      setJobSortBy('newest');
+    } else {
+      // Clear worker filters
+      setSelectedCategory('');
+      setSelectedCity('');
+      setMinExperience(0);
+      setMinPrice(0);
+      setMaxPrice(2000);
+      setMinRating(0);
+      setVerifiedOnly(false);
+      setAvailableOnly(false);
+      setWorkerSortBy('best_match');
+    }
   };
 
-  const activeFiltersCount = [
-    selectedCategory,
-    selectedCity,
-    minExperience > 0,
-    maxWage < 2000,
-    minRating > 0,
-    verifiedOnly,
-  ].filter(Boolean).length;
+  const activeFiltersCount = isWorkerMode
+    ? [
+        jobCategory,
+        jobStatus && jobStatus !== 'NEW',
+        minBudget > 0,
+        maxBudget < 5000,
+        maxDistance < 50,
+        postedWithinDays > 0,
+        urgentOnly,
+      ].filter(Boolean).length
+    : [
+        selectedCategory,
+        selectedCity,
+        minExperience > 0,
+        minPrice > 0,
+        maxPrice < 2000,
+        minRating > 0,
+        verifiedOnly,
+        availableOnly,
+      ].filter(Boolean).length;
 
   const renderHeader = () => (
     <View style={styles.header}>
@@ -204,9 +347,14 @@ export default function SearchScreen() {
       </View>
 
       <View style={styles.resultsInfo}>
-        <Text style={styles.resultsCount}>{results.length} workers found</Text>
+        <Text style={styles.resultsCount}>
+          {isWorkerMode ? jobResults.length : workerResults.length}{' '}
+          {isWorkerMode ? 'jobs' : 'workers'} found
+        </Text>
         <TouchableOpacity style={styles.sortButton}>
-          <Text style={styles.sortText}>Sort: {sortBy.replace('_', ' ')}</Text>
+          <Text style={styles.sortText}>
+            Sort: {isWorkerMode ? jobSortBy.replace('_', ' ') : workerSortBy.replace('_', ' ')}
+          </Text>
           <Ionicons name="chevron-down" size={16} color={COLORS.textSecondary} />
         </TouchableOpacity>
       </View>
@@ -216,20 +364,32 @@ export default function SearchScreen() {
   const renderEmpty = () => (
     <View style={styles.emptyContainer}>
       <Ionicons name="search" size={64} color={COLORS.textMuted} />
-      <Text style={styles.emptyTitle}>No workers found</Text>
-      <Text style={styles.emptySubtitle}>Try adjusting your filters or search terms</Text>
-      <TouchableOpacity style={styles.clearFiltersButton} onPress={clearFilters}>
-        <Text style={styles.clearFiltersText}>Clear Filters</Text>
-      </TouchableOpacity>
+      <Text style={styles.emptyTitle}>
+        {isWorkerMode ? 'No jobs found' : 'No workers found'}
+      </Text>
+      <Text style={styles.emptySubtitle}>
+        Try adjusting your filters or searching nearby
+      </Text>
+      {activeFiltersCount > 0 && (
+        <TouchableOpacity style={styles.clearFiltersButton} onPress={clearFilters}>
+          <Text style={styles.clearFiltersText}>Clear Filters</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <FlatList
-        data={results}
+        data={isWorkerMode ? jobResults : workerResults}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => <WorkerCard worker={item} />}
+        renderItem={({ item }) => 
+          isWorkerMode ? (
+            <JobCard job={item as DummyJob} />
+          ) : (
+            <WorkerCard worker={item as DummyWorker} />
+          )
+        }
         ListHeaderComponent={renderHeader}
         ListEmptyComponent={!isLoading ? renderEmpty : null}
         contentContainerStyle={styles.listContent}
@@ -396,6 +556,9 @@ export default function SearchScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* AI Assistant FAB */}
+      <FloatingAIButton />
     </SafeAreaView>
   );
 }

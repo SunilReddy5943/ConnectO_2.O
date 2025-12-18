@@ -19,6 +19,7 @@ import Header from '../components/Header';
 import SearchBar from '../components/SearchBar';
 import CategoryCard from '../components/CategoryCard';
 import WorkerCard from '../components/WorkerCard';
+import FloatingAIButton from '../components/FloatingAIButton';
 import { FEATURED_WORKERS, DUMMY_WORKERS } from '../data/dummyWorkers';
 import { DUMMY_EARNINGS_OVERVIEW, DUMMY_PERFORMANCE_METRICS } from '../data/earningsData';
 
@@ -184,6 +185,9 @@ export default function HomeScreen() {
 
           <View style={styles.bottomPadding} />
         </ScrollView>
+
+        {/* AI Assistant FAB */}
+        <FloatingAIButton />
       </SafeAreaView>
     );
   }
@@ -398,6 +402,9 @@ export default function HomeScreen() {
 
         <View style={styles.bottomPadding} />
       </ScrollView>
+
+      {/* AI Assistant FAB */}
+      <FloatingAIButton />
     </SafeAreaView>
   );
 }

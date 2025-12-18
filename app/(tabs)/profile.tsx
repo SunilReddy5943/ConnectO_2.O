@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Image,
   Alert,
+  Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -29,10 +30,33 @@ interface MenuItem {
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { user, isAuthenticated, logout, activeRole } = useAuth();
+  const { user, isAuthenticated, logout, activeRole, hasRole } = useAuth();
   const { savedWorkers, unreadCount } = useApp();
 
   const isWorkerMode = activeRole === 'WORKER';
+  
+  // Animation for referral card
+  const scaleAnim = useRef(new Animated.Value(0.95)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      // Animate in when authenticated
+      Animated.parallel([
+        Animated.spring(scaleAnim, {
+          toValue: 1,
+          useNativeDriver: true,
+          tension: 50,
+          friction: 7,
+        }),
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 500,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [isAuthenticated]);
 
   const handleLogin = () => {
     router.push('/auth/login');
@@ -65,29 +89,15 @@ export default function ProfileScreen() {
       onPress: () => router.push('/(tabs)/earnings'),
       color: COLORS.secondary,
     }] : []),
-    ...(!isWorkerMode ? [{
-      id: 'become-worker',
-      icon: 'construct' as keyof typeof Ionicons.glyphMap,
-      title: 'Become a Worker',
-      subtitle: 'Earn money by offering your services',
-      onPress: () => router.push('/auth/worker-register'),
-      color: COLORS.secondary,
-    }] : [{
+    // Become a Worker removed - now shown as prominent banner
+    ...(isWorkerMode ? [{
       id: 'post-job',
       icon: 'add-circle' as keyof typeof Ionicons.glyphMap,
       title: 'Post a Job',
       subtitle: 'Hire another worker for your needs',
       onPress: () => router.push('/job/create'),
       color: COLORS.primary,
-    }]),
-    {
-      id: 'referral',
-      icon: 'gift',
-      title: 'Refer & Earn',
-      subtitle: 'Invite friends and get rewarded',
-      onPress: () => router.push('/referral'),
-      color: COLORS.warning,
-    },
+    }] : []),
     {
       id: 'saved',
       icon: 'heart',
@@ -250,10 +260,64 @@ export default function ProfileScreen() {
           </View>
         </View>
 
+        {/* Become a Worker Banner - Only for customers without WORKER role */}
+        {!hasRole('WORKER') && activeRole === 'CUSTOMER' && (
+          <TouchableOpacity 
+            style={styles.workerBanner}
+            onPress={() => router.push('/auth/worker-register')}
+            activeOpacity={0.9}
+          >
+            <View style={styles.workerBannerContent}>
+              <View style={styles.workerBannerIcon}>
+                <Ionicons name="construct" size={28} color={COLORS.secondary} />
+              </View>
+              <View style={styles.workerBannerText}>
+                <Text style={styles.workerBannerTitle}>Want to earn on ConnectO?</Text>
+                <Text style={styles.workerBannerSubtitle}>Join as a worker and start getting jobs</Text>
+              </View>
+              <Ionicons name="arrow-forward" size={20} color={COLORS.secondary} />
+            </View>
+          </TouchableOpacity>
+        )}
+
         {/* Menu Items */}
         <View style={styles.menuContainer}>
           {menuItems.map(renderMenuItem)}
         </View>
+
+        {/* Refer & Earn Card - Above Logout */}
+        <Animated.View 
+          style={[
+            styles.referralCard,
+            {
+              transform: [{ scale: scaleAnim }],
+              opacity: fadeAnim,
+            },
+          ]}
+        >
+          <TouchableOpacity 
+            onPress={() => router.push('/referral/index')}
+            activeOpacity={0.8}
+          >
+            <View style={styles.referralContent}>
+              <View style={styles.referralTextSection}>
+                <Text style={styles.referralTitle}>Refer & earn ₹100</Text>
+                <Text style={styles.referralSubtitle}>
+                  Get ₹100 when your friend completes their first booking
+                </Text>
+                <TouchableOpacity 
+                  style={styles.referNowButton}
+                  onPress={() => router.push('/referral/index')}
+                >
+                  <Text style={styles.referNowText}>Refer now</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={styles.referralIconContainer}>
+                <Ionicons name="gift" size={56} color="#F97316" />
+              </View>
+            </View>
+          </TouchableOpacity>
+        </Animated.View>
 
         {/* Logout Button */}
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
@@ -519,5 +583,86 @@ const styles = StyleSheet.create({
     marginHorizontal: SPACING.base,
     borderRadius: BORDER_RADIUS.xl,
     ...SHADOWS.sm,
+  },
+  referralCard: {
+    marginHorizontal: SPACING.base,
+    marginTop: SPACING.lg,
+    padding: SPACING.lg,
+    borderRadius: BORDER_RADIUS.xl,
+    backgroundColor: '#E9D5FF',
+    ...SHADOWS.md,
+  },
+  referralContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  referralTextSection: {
+    flex: 1,
+    paddingRight: SPACING.md,
+  },
+  referralTitle: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+    marginBottom: 6,
+  },
+  referralSubtitle: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textSecondary,
+    lineHeight: 20,
+    marginBottom: SPACING.md,
+  },
+  referNowButton: {
+    backgroundColor: '#7C3AED',
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.sm + 2,
+    borderRadius: BORDER_RADIUS.lg,
+    alignSelf: 'flex-start',
+  },
+  referNowText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600',
+    color: COLORS.white,
+  },
+  referralIconContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  workerBanner: {
+    marginHorizontal: SPACING.base,
+    marginTop: SPACING.lg,
+    borderRadius: BORDER_RADIUS.xl,
+    backgroundColor: '#FFF7ED',
+    borderWidth: 1,
+    borderColor: '#FFEDD5',
+    ...SHADOWS.sm,
+  },
+  workerBannerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: SPACING.base,
+    gap: SPACING.md,
+  },
+  workerBannerIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: BORDER_RADIUS.lg,
+    backgroundColor: COLORS.secondary + '15',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  workerBannerText: {
+    flex: 1,
+  },
+  workerBannerTitle: {
+    fontSize: FONT_SIZES.base,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+    marginBottom: 2,
+  },
+  workerBannerSubtitle: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textSecondary,
   },
 });

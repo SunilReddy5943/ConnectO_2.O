@@ -149,14 +149,14 @@ export const getReferralReward = (
 // Dummy Data - User's Referral Profile
 export const DUMMY_USER_REFERRAL_PROFILE: UserReferralProfile = {
   userId: 'demo-user-1',
-  referralCode: 'DEM8X2K9',
-  referralLink: 'https://connecto.app/invite?ref=DEM8X2K9',
-  totalReferrals: 24,
-  successfulReferrals: 18,
-  pendingReferrals: 4,
+  referralCode: 'CONN100',
+  referralLink: 'https://connecto.app/ref/CONN100',
+  totalReferrals: 12,
+  successfulReferrals: 7,
+  pendingReferrals: 3,
   failedReferrals: 2,
-  totalEarnings: 2850,
-  walletBalance: 2850,
+  totalEarnings: 700,
+  walletBalance: 700,
   createdAt: new Date('2024-06-15'),
 };
 

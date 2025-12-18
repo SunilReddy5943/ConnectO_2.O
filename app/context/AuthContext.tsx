@@ -63,11 +63,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           parsedUser.roles = [];
         }
         
-        // Check if activeRole exists, otherwise use primaryRole
+        // SMART ROLE REMEMBERING:
+        // 1. Check if last active role exists (user's last choice)
         const storedActiveRole = await AsyncStorage.getItem('connecto_active_role');
+        
+        // 2. If user has primaryRole, prioritize it on first open
+        // 3. But respect last activeRole if it exists and user switched
         if (storedActiveRole && parsedUser.roles.includes(storedActiveRole)) {
           parsedUser.activeRole = storedActiveRole;
         } else if (parsedUser.primaryRole && parsedUser.roles.includes(parsedUser.primaryRole)) {
+          // Default to primaryRole (Worker stays Worker, Customer stays Customer)
           parsedUser.activeRole = parsedUser.primaryRole;
         } else if (parsedUser.roles.length > 0) {
           // Fallback to first role if nothing else is set

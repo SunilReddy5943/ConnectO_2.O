@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,7 +13,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS, SHADOWS } from '../constants/theme';
-import { supabase } from '../lib/supabase';
+import { useAuth } from '../context/AuthContext';
+import { GEMINI_CONFIG, SYSTEM_PROMPTS, QUICK_PROMPTS } from '../config/gemini';
 
 interface Message {
   id: string;
@@ -24,35 +25,54 @@ interface Message {
 interface AIAssistantProps {
   visible: boolean;
   onClose: () => void;
-  type?: 'job_suggestion' | 'worker_recommendation' | 'chat_assistant';
   initialMessage?: string;
 }
 
 export default function AIAssistant({
   visible,
   onClose,
-  type = 'chat_assistant',
   initialMessage,
 }: AIAssistantProps) {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: '1',
-      role: 'assistant',
-      content: getWelcomeMessage(type),
-    },
-  ]);
+  const { activeRole } = useAuth();
+  const isWorkerMode = activeRole === 'WORKER';
+  const scrollViewRef = useRef<ScrollView>(null);
+  
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState(initialMessage || '');
   const [isLoading, setIsLoading] = useState(false);
 
-  function getWelcomeMessage(assistantType: string): string {
-    switch (assistantType) {
-      case 'job_suggestion':
-        return "Hi! I'm here to help you create a great job posting. Tell me briefly what work you need done, and I'll help you write a detailed description that will attract quality workers.";
-      case 'worker_recommendation':
-        return "Hello! I can help you find the right type of worker for your needs. Describe your project or problem, and I'll recommend what skills and experience to look for.";
-      default:
-        return "Hi! I'm your ConnectO assistant. I can help you with finding workers, understanding pricing, or any questions about using the app. How can I help you today?";
+  // Initialize with welcome message when modal opens
+  useEffect(() => {
+    if (visible && messages.length === 0) {
+      const welcomeMessage: Message = {
+        id: '1',
+        role: 'assistant',
+        content: getWelcomeMessage(),
+      };
+      setMessages([welcomeMessage]);
     }
+    
+    // Reset messages when modal closes
+    if (!visible && messages.length > 1) {
+      setMessages([]);
+      setInput('');
+    }
+  }, [visible]);
+
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    if (messages.length > 0) {
+      setTimeout(() => {
+        scrollViewRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+    }
+  }, [messages]);
+
+  function getWelcomeMessage(): string {
+    if (isWorkerMode) {
+      return "Hello! I'm here to help you earn more and manage your work better. Ask me about getting more jobs, improving your profile, or any work-related questions.";
+    }
+    return "Hi! I'm here to help you find the right workers and manage your jobs. Ask me about finding workers, understanding pricing, or posting jobs.";
   }
 
   const handleSend = async () => {
@@ -69,36 +89,20 @@ export default function AIAssistant({
     setIsLoading(true);
 
     try {
-      const context = messages.slice(-6).map(m => ({
-        role: m.role,
-        content: m.content,
-      }));
-
-      const { data, error } = await supabase.functions.invoke('ai-assistant', {
-        body: {
-          message: userMessage.content,
-          context,
-          type,
-        },
-      });
-
-      if (error) throw error;
-
-      if (data.success) {
-        const assistantMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          content: data.message,
-        };
-        setMessages(prev => [...prev, assistantMessage]);
-      } else {
-        throw new Error(data.error || 'Failed to get response');
-      }
+      const response = await callGeminiAPI(userMessage.content);
+      
+      const assistantMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: response,
+      };
+      setMessages(prev => [...prev, assistantMessage]);
     } catch (error) {
+      console.error('Gemini API Error:', error);
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: "I'm sorry, I couldn't process your request. Please try again.",
+        content: "Sorry, I'm having trouble right now. Please try again.",
       };
       setMessages(prev => [...prev, errorMessage]);
     } finally {
@@ -106,15 +110,79 @@ export default function AIAssistant({
     }
   };
 
+  const callGeminiAPI = async (userInput: string): Promise<string> => {
+    const systemPrompt = isWorkerMode 
+      ? `${SYSTEM_PROMPTS.BASE}\n\n${SYSTEM_PROMPTS.WORKER}`
+      : `${SYSTEM_PROMPTS.BASE}\n\n${SYSTEM_PROMPTS.CUSTOMER}`;
+
+    const fullPrompt = `${systemPrompt}
+
+User: ${userInput}
+
+Assistant:`;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), GEMINI_CONFIG.TIMEOUT);
+
+    try {
+      const response = await fetch(
+        `${GEMINI_CONFIG.API_URL}?key=${GEMINI_CONFIG.API_KEY}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            contents: [{
+              parts: [{ text: fullPrompt }]
+            }],
+            generationConfig: {
+              temperature: 0.7,
+              maxOutputTokens: 500,
+              topP: 0.8,
+              topK: 40,
+            },
+          }),
+          signal: controller.signal,
+        }
+      );
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`API Error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      if (data.candidates && data.candidates[0]?.content?.parts[0]?.text) {
+        let text = data.candidates[0].content.parts[0].text.trim();
+        
+        // Limit response length (approximately 150 words)
+        const words = text.split(/\s+/);
+        if (words.length > GEMINI_CONFIG.MAX_RESPONSE_LENGTH) {
+          text = words.slice(0, GEMINI_CONFIG.MAX_RESPONSE_LENGTH).join(' ') + '...';
+        }
+        
+        return text;
+      }
+
+      throw new Error('No response from AI');
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        throw new Error('Request timeout');
+      }
+      throw error;
+    }
+  };
+
   const handleQuickAction = (action: string) => {
     setInput(action);
   };
 
-  const quickActions = [
-    'How do I find a good plumber?',
-    'What should I pay for electrical work?',
-    'How do I post a job?',
-  ];
+  const quickActions = isWorkerMode 
+    ? QUICK_PROMPTS.WORKER 
+    : QUICK_PROMPTS.CUSTOMER;
 
   return (
     <Modal visible={visible} animationType="slide" transparent>
@@ -130,17 +198,26 @@ export default function AIAssistant({
                 <Ionicons name="sparkles" size={20} color={COLORS.white} />
               </View>
               <View>
-                <Text style={styles.headerTitle}>AI Assistant</Text>
-                <Text style={styles.headerSubtitle}>Powered by ConnectO</Text>
+                <Text style={styles.headerTitle}>ConnectO Assistant</Text>
+                <Text style={styles.headerSubtitle}>
+                  {isWorkerMode 
+                    ? 'Helping you earn more and manage work' 
+                    : 'Helping you find the right workers'}
+                </Text>
               </View>
             </View>
-            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+            <TouchableOpacity onPress={() => {
+              setMessages([]);
+              setInput('');
+              onClose();
+            }} style={styles.closeButton}>
               <Ionicons name="close" size={24} color={COLORS.textSecondary} />
             </TouchableOpacity>
           </View>
 
           {/* Messages */}
           <ScrollView
+            ref={scrollViewRef}
             style={styles.messagesContainer}
             contentContainerStyle={styles.messagesContent}
             showsVerticalScrollIndicator={false}
@@ -161,6 +238,7 @@ export default function AIAssistant({
                 <Text
                   style={[
                     styles.messageText,
+                    message.role === 'assistant' && styles.assistantMessageText,
                     message.role === 'user' && styles.userMessageText,
                   ]}
                 >
@@ -171,13 +249,13 @@ export default function AIAssistant({
             {isLoading && (
               <View style={styles.loadingContainer}>
                 <ActivityIndicator size="small" color={COLORS.primary} />
-                <Text style={styles.loadingText}>Thinking...</Text>
+                <Text style={styles.loadingText}>AI is thinking...</Text>
               </View>
             )}
           </ScrollView>
 
-          {/* Quick Actions */}
-          {messages.length === 1 && (
+          {/* Quick Actions - Only show initially, hide after first user message */}
+          {messages.filter(m => m.role === 'user').length === 0 && (
             <View style={styles.quickActions}>
               <Text style={styles.quickActionsTitle}>Quick questions:</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -204,6 +282,8 @@ export default function AIAssistant({
               onChangeText={setInput}
               multiline
               maxLength={500}
+              returnKeyType="send"
+              onSubmitEditing={handleSend}
             />
             <TouchableOpacity
               style={[styles.sendButton, input.trim() && styles.sendButtonActive]}
@@ -306,10 +386,13 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.base,
     color: COLORS.textPrimary,
     lineHeight: 22,
+  },
+  assistantMessageText: {
     flex: 1,
   },
   userMessageText: {
     color: COLORS.white,
+    flexShrink: 1,
   },
   loadingContainer: {
     flexDirection: 'row',

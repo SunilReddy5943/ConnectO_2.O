@@ -45,7 +45,11 @@ export default function ReferralScreen() {
   };
 
   const handleShareWhatsApp = async () => {
-    const message = `Hey! Join ConnectO - India's best worker marketplace app!\n\nUse my referral code: ${profile.referralCode}\n\nOr click: ${profile.referralLink}\n\n🎁 Get rewarded when you complete your first job!`;
+    const message = `Join ConnectO to find trusted workers or earn by offering services.
+
+Use my referral code ${profile.referralCode} and earn ₹100!
+
+${profile.referralLink}`;
     
     const whatsappUrl = `whatsapp://send?text=${encodeURIComponent(message)}`;
     

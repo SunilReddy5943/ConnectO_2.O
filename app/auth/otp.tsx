@@ -26,8 +26,9 @@ export default function OTPScreen() {
     role?: string;
     name?: string;
     city?: string;
+    intent?: string; // NEW: Intent from intent selection
   }>();
-  const { phone, isRegistration, role, name, city } = params;
+  const { phone, isRegistration, role, name, city, intent } = params;
   const { login } = useAuth();
   
   const [otp, setOtp] = useState<string[]>(Array(OTP_LENGTH).fill(''));
@@ -94,39 +95,68 @@ export default function OTPScreen() {
     // Simulate OTP verification
     setTimeout(async () => {
       if (enteredOtp === DEMO_OTP) {
-        // Demo user login based on registration or login
+        // Determine the primary role from intent or role param
+        const primaryRole = (intent || role || 'CUSTOMER') as 'WORKER' | 'CUSTOMER';
+        
+        // For new users from intent selection
+        if (intent) {
+          // Create new user with selected intent as primaryRole
+          const newUser = {
+            id: 'user-' + Date.now(),
+            phone: `+91${phone}`,
+            name: 'User', // Will be updated in worker onboarding if needed
+            roles: [primaryRole] as ('WORKER' | 'CUSTOMER')[], // Single role initially
+            primaryRole: primaryRole,
+            activeRole: primaryRole,
+            is_active: true,
+          };
+          
+          await login(newUser);
+          
+          // If worker, redirect to worker onboarding (MANDATORY)
+          if (primaryRole === 'WORKER') {
+            router.replace('/auth/worker-register');
+            return;
+          }
+          
+          // If customer, go directly to home
+          router.replace('/(tabs)');
+          return;
+        }
+        
+        // Legacy flow for backward compatibility (old registration)
         if (isRegistration === 'true' && role) {
-          // New user registration
           const roles = role === 'WORKER' ? ['WORKER', 'CUSTOMER'] : ['CUSTOMER'];
-          const primaryRole = role as 'WORKER' | 'CUSTOMER';
+          const primaryRoleLegacy = role as 'WORKER' | 'CUSTOMER';
           
           await login({
             id: 'user-' + Date.now(),
             phone: `+91${phone}`,
             name: name || 'User',
             roles: roles,
-            primaryRole: primaryRole,
-            activeRole: primaryRole,
+            primaryRole: primaryRoleLegacy,
+            activeRole: primaryRoleLegacy,
             is_active: true,
           });
           
-          // If worker, redirect to complete worker profile
           if (role === 'WORKER') {
             router.replace('/auth/worker-register');
             return;
           }
         } else {
-          // Existing user login - demo user with both roles
+          // Existing user login - demo user
+          // In production, fetch user data from backend and respect their primaryRole
           await login({
             id: 'demo-user-1',
             phone: `+91${phone}`,
             name: 'Demo User',
             roles: ['CUSTOMER', 'WORKER'], // Demo user has both roles
-            primaryRole: 'CUSTOMER', // Default to CUSTOMER for demo
+            primaryRole: 'CUSTOMER', // Demo defaults to CUSTOMER
             activeRole: 'CUSTOMER',
             is_active: true,
           });
         }
+        
         router.replace('/(tabs)');
       } else {
         setError('Invalid OTP. Please try again. (Hint: 123456)');

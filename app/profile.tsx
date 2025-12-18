@@ -209,6 +209,31 @@ export default function EditProfileScreen() {
           </View>
         )}
 
+        {/* Refer & Earn Card */}
+        <TouchableOpacity 
+          style={styles.referralCard}
+          onPress={() => router.push('/referral/index')}
+          activeOpacity={0.8}
+        >
+          <View style={styles.referralContent}>
+            <View style={styles.referralText}>
+              <Text style={styles.referralTitle}>Refer & Earn ₹100</Text>
+              <Text style={styles.referralSubtitle}>
+                Get ₹100 when your friend completes their first booking
+              </Text>
+              <TouchableOpacity 
+                style={styles.referNowButton}
+                onPress={() => router.push('/referral/index')}
+              >
+                <Text style={styles.referNowText}>Refer now</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.referralIcon}>
+              <Ionicons name="gift" size={48} color={COLORS.secondary} />
+            </View>
+          </View>
+        </TouchableOpacity>
+
         {/* Danger Zone */}
         <View style={styles.dangerSection}>
           <Text style={styles.dangerTitle}>Danger Zone</Text>
@@ -395,6 +420,49 @@ const styles = StyleSheet.create({
   saveSection: {
     padding: SPACING.base,
     marginTop: SPACING.md,
+  },
+  referralCard: {
+    marginHorizontal: SPACING.base,
+    marginTop: SPACING.md,
+    padding: SPACING.lg,
+    borderRadius: BORDER_RADIUS.xl,
+    backgroundColor: '#F3E5F5',
+    ...SHADOWS.md,
+  },
+  referralContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  referralText: {
+    flex: 1,
+  },
+  referralTitle: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+    marginBottom: 4,
+  },
+  referralSubtitle: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textSecondary,
+    marginBottom: SPACING.md,
+    lineHeight: 20,
+  },
+  referNowButton: {
+    backgroundColor: '#7B1FA2',
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.sm,
+    borderRadius: BORDER_RADIUS.lg,
+    alignSelf: 'flex-start',
+  },
+  referNowText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600',
+    color: COLORS.white,
+  },
+  referralIcon: {
+    marginLeft: SPACING.md,
   },
   dangerSection: {
     backgroundColor: COLORS.white,

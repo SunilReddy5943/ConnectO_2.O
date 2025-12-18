@@ -32,13 +32,13 @@ const SUB_SKILLS: { [key: string]: string[] } = {
 
 export default function WorkerRegisterScreen() {
   const router = useRouter();
-  const { login } = useAuth();
+  const { login, user, updateUser } = useAuth();
   const [currentStep, setCurrentStep] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Personal Info
-  const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
+  // Personal Info - prefill from existing user if available
+  const [name, setName] = useState(user?.name || '');
+  const [phone, setPhone] = useState(user?.phone?.replace('+91', '') || '');
   const [gender, setGender] = useState('');
   const [dob, setDob] = useState('');
   const [profilePhoto, setProfilePhoto] = useState('');
@@ -109,15 +109,32 @@ export default function WorkerRegisterScreen() {
   const handleSubmit = async () => {
     setIsLoading(true);
     setTimeout(async () => {
-      await login({
-        id: 'worker-' + Date.now(),
-        phone: '+91' + phone,
-        name: name,
-        roles: ['WORKER', 'CUSTOMER'], // Worker can do everything customer can do
-        primaryRole: 'WORKER', // Worker's primary role is WORKER
-        activeRole: 'WORKER',
-        is_active: true,
-      });
+      if (user) {
+        // Update existing user to add WORKER role
+        const updatedRoles = user.roles.includes('WORKER') 
+          ? user.roles 
+          : [...user.roles, 'WORKER', 'CUSTOMER'];
+        
+        await login({
+          ...user,
+          name: name || user.name,
+          roles: updatedRoles as ('WORKER' | 'CUSTOMER')[],
+          primaryRole: 'WORKER', // Set WORKER as primary
+          activeRole: 'WORKER', // Activate WORKER mode
+          is_active: true,
+        });
+      } else {
+        // Create new worker user (fallback)
+        await login({
+          id: 'worker-' + Date.now(),
+          phone: '+91' + phone,
+          name: name,
+          roles: ['WORKER', 'CUSTOMER'], // Worker gets both roles
+          primaryRole: 'WORKER',
+          activeRole: 'WORKER',
+          is_active: true,
+        });
+      }
       setIsLoading(false);
       Alert.alert('Success', 'Your worker profile has been created!', [
         { text: 'OK', onPress: () => router.replace('/(tabs)') }

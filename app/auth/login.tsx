@@ -10,7 +10,7 @@ import {
   ScrollView,
   Alert,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import Input from '../components/ui/Input';
@@ -18,6 +18,9 @@ import Button from '../components/ui/Button';
 
 export default function LoginScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ intent?: string }>();
+  const { intent } = params;
+  
   const [phone, setPhone] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
@@ -47,7 +50,10 @@ export default function LoginScreen() {
       setIsLoading(false);
       router.push({
         pathname: '/auth/otp',
-        params: { phone: phone.replace(/\D/g, '') },
+        params: { 
+          phone: phone.replace(/\D/g, ''),
+          intent: intent || 'CUSTOMER', // Pass intent to OTP screen
+        },
       });
     }, 1000);
   };
@@ -77,11 +83,20 @@ export default function LoginScreen() {
 
           <View style={styles.header}>
             <View style={styles.iconContainer}>
-              <Ionicons name="phone-portrait" size={40} color={COLORS.primary} />
+              {intent === 'WORKER' ? (
+                <Ionicons name="construct" size={40} color={COLORS.secondary} />
+              ) : (
+                <Ionicons name="person" size={40} color={COLORS.primary} />
+              )}
             </View>
-            <Text style={styles.title}>Welcome Back!</Text>
+            <Text style={styles.title}>
+              {intent === 'WORKER' ? 'Join as a Worker' : 'Welcome Back!'}
+            </Text>
             <Text style={styles.subtitle}>
-              Enter your phone number to continue
+              {intent === 'WORKER' 
+                ? 'Enter your phone number to start earning'
+                : 'Enter your phone number to continue'
+              }
             </Text>
           </View>
 

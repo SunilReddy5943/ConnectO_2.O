@@ -21,9 +21,11 @@ export default function RootLayout() {
           }}
         >
           <Stack.Screen name="index" />
+          <Stack.Screen name="auth/intent-selection" />
           <Stack.Screen name="auth/login" />
           <Stack.Screen name="auth/otp" />
           <Stack.Screen name="auth/register" />
+          <Stack.Screen name="auth/worker-register" />
           <Stack.Screen name="auth/role-select" />
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="search" />

@@ -28,7 +28,7 @@ export default function WelcomeScreen() {
   }, [isAuthenticated, isLoading]);
 
   const handleGetStarted = () => {
-    router.push('/auth/login');
+    router.push('/auth/intent-selection');
   };
 
   const handleSkip = () => {
